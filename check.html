@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>설치 진단</title>
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+body{font-family:system-ui,sans-serif;background:#111;color:#eee;margin:0;padding:16px;font-size:15px;line-height:1.5}
+h1{font-size:18px;margin:0 0 12px}
+.r{padding:8px 10px;margin:6px 0;border-radius:8px;background:#222;word-break:break-all}
+.ok{border-left:4px solid #4caf50}.no{border-left:4px solid #f44336}.in{border-left:4px solid #999}
+</style></head><body>
+<h1>HSK 설치 진단</h1>
+<div id="out"></div>
+<script>
+var out=document.getElementById('out');
+function log(t,c){var d=document.createElement('div');d.className='r '+(c||'in');d.textContent=t;out.appendChild(d);}
+function wait(ms){return new Promise(function(r){setTimeout(r,ms)})}
+(async function(){
+  log('주소: '+location.href);
+  log('보안 연결(https): '+(window.isSecureContext?'예':'아니오'),window.isSecureContext?'ok':'no');
+  log('서비스워커 지원: '+('serviceWorker' in navigator?'예':'아니오'),('serviceWorker' in navigator)?'ok':'no');
+  var base=location.href.replace(/[^\/]*$/,'');
+  // manifest
+  try{
+    var l=document.querySelector('link[rel=manifest]');
+    var r=await fetch(l.href,{cache:'no-store'});
+    log('manifest 응답: '+r.status+' / '+r.headers.get('content-type'),r.ok?'ok':'no');
+    var j=await r.json();
+    log('manifest 해석 성공: '+j.name+' / start_url='+j.start_url+' / display='+j.display,'ok');
+    for(var i=0;i<j.icons.length;i++){
+      var u=new URL(j.icons[i].src,l.href).href;
+      try{
+        var ir=await fetch(u,{cache:'no-store'});
+        var b=await ir.blob();
+        var bmp=await createImageBitmap(b);
+        log('아이콘 '+j.icons[i].src+' : '+ir.status+' / 실제 크기 '+bmp.width+'x'+bmp.height+' (선언 '+j.icons[i].sizes+')',(ir.ok&&(bmp.width+'x'+bmp.height)==j.icons[i].sizes)?'ok':'no');
+      }catch(e){log('아이콘 '+j.icons[i].src+' 오류: '+e,'no');}
+    }
+  }catch(e){log('manifest 오류: '+e,'no');}
+  // sw
+  if('serviceWorker' in navigator){
+    try{
+      var reg=await navigator.serviceWorker.register('sw.js');
+      log('sw.js 등록 요청 성공 (scope: '+reg.scope+')','ok');
+      var w=reg.installing||reg.waiting||reg.active;
+      var t0=Date.now();
+      while(Date.now()-t0<8000){
+        var s=(reg.active&&'active')||(reg.waiting&&'waiting')||(reg.installing&&'installing')||'none';
+        if(s==='active')break;
+        await wait(300);
+      }
+      var st=(reg.active&&'active')||(reg.waiting&&'waiting')||(reg.installing&&'installing')||'없음(설치 실패)';
+      log('서비스워커 상태: '+st,st==='active'?'ok':'no');
+    }catch(e){log('sw.js 등록 실패: '+e.name+' - '+e.message,'no');}
+    try{
+      var ks=await caches.keys();
+      log('저장된 캐시: '+(ks.join(', ')||'없음'),ks.length?'ok':'no');
+    }catch(e){log('캐시 확인 오류: '+e,'no');}
+  }
+  // core files
+  var core=['','index.html','manifest.webmanifest','sw.js','icon-192.png','icon-512.png','icon-maskable-512.png','apple-touch-icon.png'];
+  for(var k=0;k<core.length;k++){
+    try{var cr=await fetch(base+core[k],{cache:'no-store'});log('파일 '+(core[k]||'(폴더 주소)')+' : '+cr.status,cr.ok?'ok':'no');}
+    catch(e){log('파일 '+core[k]+' 오류: '+e,'no');}
+  }
+  log('브라우저: '+navigator.userAgent);
+  log('진단 끝. 이 화면을 스크린샷으로 보내 주세요.');
+})();
+</script>
+</body></html>
